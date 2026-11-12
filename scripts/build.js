@@ -23,7 +23,7 @@ const cache = path.join(root, '.cache');
 const version = require(path.join(root, 'package.json')).version;
 const NODE = process.version;                          // e.g. v24.14.1
 const FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
-const MODULES = ['relay.js', 'store.js', 'drive.js', 'lib/mesh.js', 'lib/identity.js'];
+const MODULES = ['relay.js', 'store.js', 'drive.js', 'panel.js', 'lib/mesh.js', 'lib/identity.js'];
 const DOCS = ['README.md', 'LICENSE'];
 
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: 'inherit', cwd: root, shell: process.platform === 'win32', ...opts });

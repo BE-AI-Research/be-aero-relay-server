@@ -88,18 +88,41 @@ Shared storage and File Pool copy.
 sudo be-aero-relay status        # paired devices, online or not, and what waits for each
 ```
 
+## Control panel
+
+```bash
+sudo be-aero-relay panel         # Linux service
+be-aero-relay.exe panel          # Windows (elevated, with RELAY_DATA set by the installer)
+```
+
+A full-screen panel in the terminal, with four tabs:
+- **Health** (live): uptime, CPU, memory, disk, storage, traffic in and out, and uploads in
+  progress.
+- **Devices:** online or last seen, and what waits for each. Press `u` to unpair one.
+- **Settings:** the name, port, storage cap, message lifetime and LAN announcements. Changes are
+  saved at once; a restart (`r`) applies the ones that need it.
+- **Log:** the relay's recent log.
+
+`p` opens pairing and `q` quits; the relay keeps running.
+
+The panel, `pair` and `status` talk to the running relay over a local admin port (41813, this
+machine only), using a token kept in the relay's data folder (`admin.token`). Only the relay's own
+user and administrators can use them.
+
 ## Settings
 
-All settings are environment variables.
+Settings are kept in `config.json` in the data folder; change them in the panel. Environment
+variables win over the file:
 
 | Variable | Default | |
 |---|---|---|
 | `RELAY_DATA` | `~/.be-aero-relay` (service: `/var/lib/be-aero-relay`) | Identity, paired devices, mailbox, storage |
 | `RELAY_PORT` | `41811` | The port devices connect to (TCP) |
 | `RELAY_ADMIN_PORT` | `41813` | `pair` and `status`; listens on this machine only |
-| `RELAY_MAX_GB` | `2` | Storage cap for waiting items and storage together |
+| `RELAY_MAX_GB` | `2` | Storage cap for waiting messages and stored files together |
 | `RELAY_TTL_DAYS` | `30` | Messages not collected by then are deleted |
 | `RELAY_NAME` | `BE-Aero Relay Server (<host>)` | The name your devices see |
+| `RELAY_DISCOVERY` | `1` | Announce on the local network, so devices follow an address change |
 
 To reach the relay from outside your home network, forward `RELAY_PORT` (TCP) to it, or put the
 relay and your devices on the same VPN.
@@ -113,7 +136,13 @@ relay and your devices on the same VPN.
   the envelope and hands it only to the recipient, which acknowledges it. A newer state item
   replaces the waiting one.
 - **Storage:** files are encrypted in 1 MB AES-256-GCM chunks on the device. Names, sizes and
-  checksums travel in sealed metadata. The relay keeps opaque objects.
+  checksums travel in sealed metadata. The relay keeps opaque objects, with one index for a fast
+  start.
+- **Large transfers:** uploads resume where they stopped, even after a relay restart. Devices fetch
+  only what changed since their last look. A few files move at a time.
+- **Conflicts:** every upload names the version it replaces. If another device changed the file
+  meanwhile, the relay says so instead of overwriting it. Identical content is dropped, the File
+  Pool copy keeps the newer file, and Shared storage keeps a "(conflict *device* *date*)" copy.
 - **No permissions:** a relay gets none of a device's permissions. It cannot browse files, use
   the assistant or change settings on your devices.
 
