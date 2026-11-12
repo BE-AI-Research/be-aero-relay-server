@@ -201,13 +201,14 @@ function createRelay({ dataDir = DATA, port, name, maxBytes, ttlMs, discovery, q
   mesh.handle('drive.chunk', null, async (a, from) => { count('in', a.data); return { ok: true, ...drive.chunk(String(a.id), a.offset, a.data, from.id) }; });
   mesh.handle('drive.commit', null, async (a, from) => {
     const r = drive.commit(String(a.id), { force: !!a.force, asNew: a.asNew || null, by: from.id });
+    await drive.durable();          // "stored" only once the index says so on disk
     if (r.ok && !r.already) noteStored(from.id);
     return r;
   });
   mesh.handle('drive.abort', null, async (a, from) => ({ ok: drive.abort(String(a.id), from.id) }));
   mesh.handle('drive.read', null, async (a) => { const r = drive.read(String(a.id), a.offset, a.length); count('out', r.data); return r; });
-  mesh.handle('drive.meta', null, async (a) => ({ ok: drive.setMeta(String(a.id), a.meta, a.key) }));
-  mesh.handle('drive.remove', null, async (a) => ({ removed: drive.remove(a.ids) }));
+  mesh.handle('drive.meta', null, async (a) => { const ok = drive.setMeta(String(a.id), a.meta, a.key); await drive.durable(); return { ok }; });
+  mesh.handle('drive.remove', null, async (a) => { const removed = drive.remove(a.ids); await drive.durable(); return { removed }; });
 
   mesh.on('online', (id) => { say(`online: ${(mesh.peers.get(id) || {}).name || id}`); setTimeout(() => nudge(id), 1500); });
   mesh.on('change', () => {

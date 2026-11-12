@@ -35,6 +35,8 @@ class DriveStore {
     this.seq = 0;
     this.floor = 0;                // tombstones older than this were dropped
     this.saveTimer = null;
+    this.saveWait = null;          // { p, res, rej }: callers waiting for the next save
+    this.doomed = [];              // object files to delete once the index without them is on disk
     fs.mkdirSync(this.dir, { recursive: true });
     this.load();
   }
@@ -42,14 +44,24 @@ class DriveStore {
   indexFile() { return path.join(this.dir, 'index.json'); }
 
   load() {
+    const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+    const hasMeta = () => fs.readdirSync(this.dir).some((f) => f.endsWith('.meta'));
     let j = null;
-    try { j = JSON.parse(fs.readFileSync(this.indexFile(), 'utf8')); } catch { j = null; }
+    if (fs.existsSync(this.indexFile()) || fs.existsSync(`${this.indexFile()}.bak`)) {
+      // A torn or missing index (power loss): the previous one, never an empty one.
+      try { j = read(this.indexFile()); } catch (err) {
+        try { j = read(`${this.indexFile()}.bak`); } catch {
+          throw new Error(`the storage index (${this.indexFile()}) cannot be read (${err.message}); not starting, so nothing is forgotten - restore index.json or index.json.bak`);
+        }
+      }
+      if (!j || !j.objects) throw new Error(`the storage index (${this.indexFile()}) is not valid; not starting`);
+    }
     if (j && j.objects) {
       this.seq = Number(j.seq) || 0;
       this.floor = Number(j.floor) || 0;
       for (const o of Object.values(j.objects)) if (ID_RE.test(o.id)) this.objects.set(o.id, o);
       for (const [id, s] of Object.entries(j.removed || {})) this.removed.set(id, s);
-    } else {
+    } else if (hasMeta()) {
       // Before 1.0.1: one .meta file per object. Read them once, then keep the index.
       for (const f of fs.readdirSync(this.dir)) {
         if (!f.endsWith('.meta')) continue;
@@ -77,13 +89,44 @@ class DriveStore {
     }
   }
 
-  save() { clearTimeout(this.saveTimer); this.saveTimer = setTimeout(() => this.saveNow(), 500); }
+  // Saves are grouped (one write for a burst of changes); durable() resolves
+  // once the changes made so far are on disk - the relay replies after that.
+  save() {
+    if (!this.saveWait) {
+      let res; let rej;
+      const p = new Promise((a, b) => { res = a; rej = b; });
+      p.catch(() => {});
+      this.saveWait = { p, res, rej };
+      this.saveTimer = setTimeout(() => { try { this.saveNow(); } catch { /* reported to the waiters */ } }, 200);
+    }
+    return this.saveWait.p;
+  }
+  durable() { return this.saveWait ? this.saveWait.p : Promise.resolve(); }
 
   saveNow() {
     clearTimeout(this.saveTimer);
-    const tmp = `${this.indexFile()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify({ seq: this.seq, floor: this.floor, objects: Object.fromEntries(this.objects), removed: Object.fromEntries(this.removed) }));
-    fs.renameSync(tmp, this.indexFile());
+    this.saveTimer = null;
+    const w = this.saveWait;
+    this.saveWait = null;
+    try {
+      const file = this.indexFile();
+      const tmp = `${file}.tmp`;
+      const fd = fs.openSync(tmp, 'w');
+      try {
+        fs.writeSync(fd, JSON.stringify({ seq: this.seq, floor: this.floor, objects: Object.fromEntries(this.objects), removed: Object.fromEntries(this.removed) }));
+        fs.fsyncSync(fd);
+      } finally { fs.closeSync(fd); }
+      // The previous index stays as index.json.bak.
+      try { fs.renameSync(file, `${file}.bak`); } catch { /* first save */ }
+      fs.renameSync(tmp, file);
+      // Only now are files the index no longer lists safe to delete.
+      const doomed = this.doomed;
+      this.doomed = [];
+      for (const id of doomed) { try { fs.rmSync(this.file(id, 'bin'), { force: true }); } catch { /* gone */ } }
+      if (w) w.res();
+    } catch (err) {
+      if (w) w.rej(err); else throw err;
+    }
   }
 
   file(id, ext) { if (!ID_RE.test(String(id))) throw new Error('bad object id'); return path.join(this.dir, `${id}.${ext}`); }
@@ -222,7 +265,7 @@ class DriveStore {
       if (!this.objects.has(id)) continue;
       this.objects.delete(id);
       this.removed.set(id, ++this.seq);
-      try { fs.rmSync(this.file(id, 'bin'), { force: true }); } catch { /* gone */ }
+      this.doomed.push(id);
       n++;
     }
     // Keep the tombstone list bounded; older readers then get a full index.
