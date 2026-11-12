@@ -1,0 +1,16 @@
+{
+  "name": "be-aero-relay-server",
+  "version": "1.0.0",
+  "description": "BE-Aero Relay Server: keeps your BE-Aero devices in touch when they are not online at the same time. Stores and forwards end-to-end encrypted state, AI requests and files.",
+  "main": "relay.js",
+  "bin": { "be-aero-relay": "relay.js" },
+  "scripts": {
+    "start": "node relay.js",
+    "pair": "node relay.js pair",
+    "status": "node relay.js status",
+    "build": "node scripts/build.js"
+  },
+  "engines": { "node": ">=18" },
+  "repository": { "type": "git", "url": "https://github.com/BE-AI-Research/be-aero-relay-server.git" },
+  "license": "AGPL-3.0-only"
+}
