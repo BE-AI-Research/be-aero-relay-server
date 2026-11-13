@@ -134,15 +134,28 @@ class DriveStore {
   count() { return this.objects.size; }
 
   // Everything (since = 0), or only what changed after `since`.
-  index(since = 0) {
+  // limit (newer devices): at most that many objects per answer, oldest
+  // change first, with more: true and seq = how far this page goes - a big
+  // store would otherwise not fit in one message (16 MB). cont: a following
+  // page of a full listing (not a fresh start, whatever the floor says).
+  index(since = 0, { limit = 0, cont = false } = {}) {
     const s = Number(since) || 0;
-    const full = !s || s < this.floor;
+    const full = !cont && (!s || s < this.floor);
     const pick = (o) => ({ id: o.id, meta: o.meta, size: o.size, at: o.at, key: o.key || '', seq: o.seq });
-    return {
-      seq: this.seq, full,
-      objects: [...this.objects.values()].filter((o) => full || o.seq > s).map(pick),
-      removed: full ? [] : [...this.removed].filter(([, q]) => q > s).map(([id]) => id)
-    };
+    let objects = [...this.objects.values()].filter((o) => full || o.seq > s);
+    let removed = full ? [] : [...this.removed].filter(([, q]) => q > s);
+    let seq = this.seq;
+    let more = false;
+    const max = Math.max(0, Math.floor(Number(limit) || 0));
+    if (max && objects.length + removed.length > max) {
+      // One page: the next changes in order (objects and removals together).
+      const changes = [...objects.map((o) => [o.seq, o]), ...removed.map(([id, q]) => [q, id])].sort((a, b) => a[0] - b[0]).slice(0, max);
+      seq = changes[changes.length - 1][0];
+      objects = changes.filter(([, x]) => typeof x === 'object').map(([, o]) => o);
+      removed = changes.filter(([, x]) => typeof x === 'string').map(([q, id]) => [id, q]);
+      more = true;
+    }
+    return { seq, full, more, objects: objects.map(pick), removed: removed.map(([id]) => id) };
   }
 
   begin(meta, size, { key = '', base = null, by = '' } = {}) {

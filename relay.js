@@ -219,7 +219,7 @@ function createRelay({ dataDir = DATA, port, name, maxBytes, ttlMs, discovery, q
     stored++;
     if (!storedTimer) storedTimer = setTimeout(() => { say(`stored ${stored} file(s) from ${from.slice(0, 7)} (${drive.count()} in all)`); stored = 0; storedTimer = null; }, 10000);
   };
-  mesh.handle('drive.index', null, async (a) => ({ ...drive.index(a && a.since), used: store.used() + drive.used(), maxBytes: store.maxBytes, version: 2 }));
+  mesh.handle('drive.index', null, async (a) => ({ ...drive.index(a && a.since, { limit: Math.min(Number(a && a.limit) || 0, 20000), cont: !!(a && a.cont) }), used: store.used() + drive.used(), maxBytes: store.maxBytes, version: 2 }));
   mesh.handle('drive.begin', null, async (a, from) => ({ id: drive.begin(a.meta, a.size, { key: a.key, base: a.base, by: from.id }) }));
   mesh.handle('drive.status', null, async (a) => drive.status(String(a.id)));
   mesh.handle('drive.chunk', null, async (a, from) => { count('in', a.data); return { ok: true, ...drive.chunk(String(a.id), a.offset, a.data, from.id) }; });
