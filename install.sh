@@ -34,6 +34,8 @@ fi
 if [ -n "${WANT:-}" ]; then
   GOT="$(sha256sum "$TMP/relay.tar.gz" | awk '{print $1}')"
   [ "$GOT" = "$WANT" ] || { echo "checksum mismatch - not installing" >&2; exit 1; }
+elif [ -n "${RELAY_REQUIRE_CHECKSUM:-}" ]; then
+  echo "no checksum published for this release - not installing it automatically" >&2; exit 1
 fi
 mkdir "$TMP/x"
 tar -xzf "$TMP/relay.tar.gz" -C "$TMP/x"

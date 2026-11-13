@@ -21,7 +21,7 @@ const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const { Mesh } = require('./lib/mesh');
 const { loadIdentity } = require('./lib/identity');
 const { MailStore, DEV_RE } = require('./store');
@@ -34,13 +34,16 @@ const ADMIN_PORT = Number(env.RELAY_ADMIN_PORT) || 41813;
 const SELF = /\.js$/i.test(process.argv[1] || '') ? 'node relay.js' : path.basename(process.execPath);
 
 // ---- settings: config.json, then the environment on top
-const DEFAULTS = { name: '', port: 41811, maxGB: 2, ttlDays: 30, discovery: true };
+// autoUpdate: null = never chosen (off; setup asks once), true / false = chosen.
+const DEFAULTS = { name: '', port: 41811, maxGB: 2, ttlDays: 30, discovery: true, autoUpdate: null };
+const onOff = (v) => (typeof v === 'boolean' ? v : /^(1|true|yes|on|y)$/i.test(String(v).trim()));
 const CONFIG_FIELDS = {
   name: { label: 'Name your devices see', parse: (v) => String(v || '').trim().slice(0, 60), restart: true },
   port: { label: 'Port devices connect to (TCP)', parse: (v) => { const n = Math.round(Number(v)); if (!(n >= 1024 && n <= 65535)) throw new Error('a port from 1024 to 65535'); return n; }, restart: true },
   maxGB: { label: 'Storage cap (GB)', parse: (v) => { const n = Number(v); if (!(n >= 0.1 && n <= 100000)) throw new Error('a size in GB'); return Math.round(n * 10) / 10; } },
   ttlDays: { label: 'Keep uncollected messages (days)', parse: (v) => { const n = Math.round(Number(v)); if (!(n >= 1 && n <= 3650)) throw new Error('1 to 3650 days'); return n; } },
-  discovery: { label: 'Announce on the local network', parse: (v) => (typeof v === 'boolean' ? v : /^(1|true|yes|on)$/i.test(String(v))), restart: true }
+  discovery: { label: 'Announce on the local network', parse: (v) => (typeof v === 'boolean' ? v : /^(1|true|yes|on)$/i.test(String(v))), restart: true },
+  autoUpdate: { label: 'Install updates automatically (daily)', parse: onOff }
 };
 const ENV_OF = { name: 'RELAY_NAME', port: 'RELAY_PORT', maxGB: 'RELAY_MAX_GB', ttlDays: 'RELAY_TTL_DAYS', discovery: 'RELAY_DISCOVERY' };
 const configFile = (dir = DATA) => path.join(dir, 'config.json');
@@ -58,6 +61,7 @@ function effective(dir = DATA) {
     maxGB: Number(env.RELAY_MAX_GB) || Number(c.maxGB) || 2,
     ttlDays: Number(env.RELAY_TTL_DAYS) || Number(c.ttlDays) || 30,
     discovery: env.RELAY_DISCOVERY !== undefined ? env.RELAY_DISCOVERY !== '0' : c.discovery !== false,
+    autoUpdate: c.autoUpdate === true,
     fromEnv: Object.keys(DEFAULTS).filter((k) => env[ENV_OF[k]] !== undefined)
   };
 }
@@ -121,7 +125,21 @@ async function cli(cmd) {
     return;
   }
   if (cmd === 'panel') { await require('./panel').run({ admin, fields: CONFIG_FIELDS, self: SELF }); return; }
-  console.log(`BE-Aero Relay Server ${VERSION}\nusage: ${SELF}            run the relay\n       ${SELF} panel      the control panel: health, devices, settings, log\n       ${SELF} pair       open pairing on the running relay\n       ${SELF} status     paired devices and what waits for them`);
+  if (cmd === '--version' || cmd === 'version') { console.log(VERSION); return; }
+  // Automatic updates (the daily be-aero-relay-update timer reads this):
+  //   auto-update on | off   choose;   auto-update   show (on / off / unset)
+  if (cmd === 'auto-update') {
+    const want = process.argv[3];
+    const cfg = readConfig();
+    if (want) {
+      if (!/^(on|off|yes|no|true|false|1|0)$/i.test(want)) throw new Error('use: auto-update on | off');
+      cfg.autoUpdate = onOff(want);
+      writeConfig(cfg);
+    }
+    console.log(cfg.autoUpdate === true ? 'on' : cfg.autoUpdate === false ? 'off' : 'unset');
+    return;
+  }
+  console.log(`BE-Aero Relay Server ${VERSION}\nusage: ${SELF}            run the relay\n       ${SELF} panel      the control panel: health, devices, settings, log\n       ${SELF} pair       open pairing on the running relay\n       ${SELF} status     paired devices and what waits for them\n       ${SELF} auto-update on|off   install new releases by itself (daily)`);
 }
 
 // The relay itself, without the admin port: used by main() and by tests.

@@ -1,6 +1,6 @@
 {
   "name": "be-aero-relay-server",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "BE-Aero Relay Server: keeps your BE-Aero devices in touch when they are not online at the same time. Stores and forwards end-to-end encrypted state, AI requests and files.",
   "main": "relay.js",
   "bin": { "be-aero-relay": "relay.js" },
