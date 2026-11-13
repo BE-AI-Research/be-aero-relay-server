@@ -163,7 +163,13 @@ function createRelay({ dataDir = DATA, port, name, maxBytes, ttlMs, discovery, q
   const drive = new DriveStore({ dir: dataDir, budget: () => store.maxBytes - store.used() - drive.used(), log: say });
   // A pairing code was shown on this machine (pair): whoever presents it is
   // approved - the code is the proof.
-  const mesh = new Mesh({ identity, peers, port: port !== undefined ? port : cfg.port, discovery: discovery !== undefined ? discovery : cfg.discovery, approvePairing: async () => true, role: 'relay', log: say });
+  // Devices unpaired here while offline: told to forget the relay when they next connect.
+  const forgottenFile = path.join(dataDir, 'forgotten.json');
+  const forgotten = {
+    load: () => { try { return JSON.parse(fs.readFileSync(forgottenFile, 'utf8')); } catch { return []; } },
+    save: (list) => { const tmp = `${forgottenFile}.tmp`; fs.writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 }); fs.renameSync(tmp, forgottenFile); }
+  };
+  const mesh = new Mesh({ identity, peers, forgotten, port: port !== undefined ? port : cfg.port, discovery: discovery !== undefined ? discovery : cfg.discovery, approvePairing: async () => true, role: 'relay', log: say });
   const paired = (id) => mesh.peers.has(id);
 
   // Traffic, for the panel: bytes in and out, per minute.
