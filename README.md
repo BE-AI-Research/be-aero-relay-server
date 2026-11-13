@@ -127,6 +127,21 @@ variables win over the file:
 To reach the relay from outside your home network, forward `RELAY_PORT` (TCP) to it, or put the
 relay and your devices on the same VPN.
 
+## Automatic updates
+
+Off until you choose. On Linux, setup asks once (in a terminal) whether to turn them on; without a
+terminal to ask on - a script, a provisioning tool - they stay off unless `RELAY_AUTO_UPDATE=on`
+is set. Change your mind any time, or in the panel's Settings:
+
+```bash
+sudo be-aero-relay auto-update on    # or off; with no argument it shows on / off / unset
+```
+
+When on, a daily systemd timer (`be-aero-relay-update.timer`, at a random time) installs a newer
+release with the same installer you used, and only if its SHA-256 checksum is published and
+matches. Your data, pairings and settings are kept. `sudo /usr/local/sbin/be-aero-relay-update --now`
+checks immediately, whatever the setting.
+
 ## How it works
 
 - **Identity:** the relay has a device identity (a P-256 key and a self-signed certificate). Its
